@@ -1,3 +1,4 @@
+# Clojure (default)
 /target
 /classes
 /checkouts
@@ -9,3 +10,13 @@ pom.xml.asc
 /.nrepl-port
 .hgignore
 .hg/
+
+# Vim
+[._]*.s[a-w][a-z]
+[._]s[a-w][a-z]
+*.un~
+Session.vim
+.netrwhist
+*~
+
+

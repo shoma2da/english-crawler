@@ -5,7 +5,9 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [
                  [org.clojure/clojure "1.8.0"]
-                 [org.clojars.scsibug/feedparser-clj "0.4.0"]]
+                 [org.clojars.scsibug/feedparser-clj "0.4.0"]
+                 [com.zenboxapp/taika "0.1.4"] ;for Firebase
+                 ]
   :main ^:skip-aot english-crawler.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})
