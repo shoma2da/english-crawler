@@ -7,10 +7,10 @@
   (:gen-class))
 
 (def p pprint); for debug
-(def firebase-token "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-(def firebase-db-name "XXXXXXXXXXX-XXXXX")
-(def slack-token "XXXX-XXXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXX")
-(def slack-room-name "POST_TARGET_ROOM_NAME")
+(def firebase-token (System/getenv "FIREBASE_TOKEN"))
+(def firebase-db-name (System/getenv "FIREBASE_DB_NAME"))
+(def slack-token (System/getenv "SLACK_TOKEN"))
+(def slack-room-name(System/getenv "SLACK_ROOM_NAME"))
 
 (def src '(
   { :name "The Japan Times", :feed-url "http://www.japantimes.co.jp/feed/topstories/" }
@@ -31,8 +31,8 @@
 
 (defn -main [& args]
   (def write-data (flatten (map one-src-to-entries src)))
+  ;TODO ↓すべてupdateしないで、まだ入っていないデータのみにした方が良さそう
   (doseq [data write-data]
     (taika/update! firebase-db-name "/news" { (hash (:link data)) data } user-auth-token))
-    ;TODO すべてupdateしないで、まだ入っていないデータのみにした方が良さそう
+  ;TODO ↓取得結果の概要などもポストすると良さそう（○○件追加とか）
   (slack/post-message connection slack-room-name "【英語アプリ】ニュースサイトのクロールが終わりました"))
-    ;TODO 取得結果の概要などもポストすると良さそう（○○件追加とか）
