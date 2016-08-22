@@ -51,9 +51,8 @@
   (taika/update! firebase-db-name "/news" data firebase-user-auth-token))
 
 (defn new-data-message [new-data]
-  (if (= 0 (count new-data))
-    "【クロール結果】新着ニュースはありませんでした"
-    (str "【クロール結果】上記 " (count new-data) " 件の新着ニュースをFirebaseに保存しました")))
+  (if (not= 0 (count new-data))
+    (str "【クロール結果】" (count new-data) " 件の新着ニュースをFirebaseに保存しました")))
 
 (defn post-message-to-slack [message]
   (slack/post-message slack-connection slack-room-name message))
@@ -65,5 +64,5 @@
   (def new-data (remove already-saved rss-data))
   (doseq [data new-data]
     (insert-news-to-firebase data)
-    (post-message-to-slack (:title (first (vals data)))))
+    (p (:title (first (vals data)))))
   (post-message-to-slack (new-data-message new-data)))
