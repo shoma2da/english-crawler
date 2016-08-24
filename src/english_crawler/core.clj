@@ -4,15 +4,27 @@
   (:require [taika.core :as taika])
   (:require [taika.auth :as taika-auth])
   (:require [clj-slack.chat :as slack])
+  (:require [clj-time.format :as formatter])
   (use clojure.pprint)
+  (use pl.danieljanus.tagsoup)
   (:gen-class))
 (def p pprint); for debug
 
+(def built-in-formatter )
 
 ; Feed data
-(def src '(
-  { :name "The Japan Times", :feed-url "http://www.japantimes.co.jp/feed/topstories/" }
-  { :name "Japan Today", :feed-url "http://www.japantoday.com/feed" }))
+(def src (list
+  { :name "The Japan Times",
+    :feed-url "http://www.japantimes.co.jp/feed/topstories/",
+    :get-published-date (fn [entry]
+                          (time (Thread/sleep 3000))
+                          (def link (:link entry))
+                          (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
+                          (def datetime (:datetime (first (filter #(contains? % :datetime) maps))))
+                          (.toDate (formatter/parse (formatter/formatters :date-time-no-ms) datetime))) }
+  { :name "Japan Today",
+    :feed-url "http://www.japantoday.com/feed",
+    :get-published-date (fn [entry] (:published-date entry)) }))
 
 
 ; Firebase
@@ -34,18 +46,32 @@
 
 
 ; Functions
-(defn id [data]
-  (hash (:link data)))
+(defn append-id [entry]
+  (def id (hash (:link entry)))
+  (merge entry {:id (str id)} ))
 
-(defn fetch-from-rss [one-src]
+(defn entries-from-src [one-src]
   (def entries (:entries (feedparser/parse-feed (:feed-url one-src))))
-  (def simple-entries(map #(select-keys % [:title :link :site-name]) entries))
-  (def rss-data (map #(assoc % :site-name (:name one-src)) simple-entries))
-  (map (fn [data] { (id data) data }) rss-data))
+  (map #(hash-map :entry (append-id %), :src one-src) entries))
 
-(defn already-saved [data]
-  (def entry-id (str (first (keys data))))
-  (contains? saved-entries entry-id))
+(defn is-already-saved [entry]
+  (def id (:id (:entry entry)))
+  (some #(= id %) (keys saved-entries)))
+
+(defn append-datetime [{entry :entry, src :src}]
+  (def datetime ((:get-published-date src) entry))
+  (list :entry (merge entry { :datetime datetime }), :src src))
+
+(defn to-firebase-content [{entry :entry, src :src}]
+  {
+    (:id entry)
+    {
+       :site-name (:name src)
+       :link (:link entry)
+       :title (:title entry)
+       :datetime (:datetime entry)
+     }
+   })
 
 (defn insert-news-to-firebase [data]
   (taika/update! firebase-db-name "/news" data firebase-user-auth-token))
@@ -60,9 +86,10 @@
 
 ; Main
 (defn -main [& args]
-  (def rss-data (mapcat fetch-from-rss src))
-  (def new-data (remove already-saved rss-data))
-  (doseq [data new-data]
+  (def entries (flatten (map entries-from-src src)))
+  (def new-entries (remove is-already-saved entries))
+  (def additional-new-entries (map append-datetime new-entries))
+  (doseq [data (map to-firebase-content additional-new-entries)]
     (insert-news-to-firebase data)
     (p (:title (first (vals data)))))
-  (post-message-to-slack (new-data-message new-data)))
+  (post-message-to-slack (new-data-message new-entries)))
