@@ -24,6 +24,9 @@
                           (.toDate (formatter/parse (formatter/formatters :date-time-no-ms) datetime))) }
   { :name "Japan Today",
     :feed-url "http://www.japantoday.com/feed",
+    :get-published-date (fn [entry] (:published-date entry)) }
+  { :name "TechCrunch"
+    :feed-url "http://feeds.feedburner.com/TechCrunch/"
     :get-published-date (fn [entry] (:published-date entry)) }))
 
 
