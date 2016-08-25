@@ -16,18 +16,25 @@
 (def src (list
   { :name "The Japan Times",
     :feed-url "http://www.japantimes.co.jp/feed/topstories/",
-    :get-published-date (fn [entry]
-                          (time (Thread/sleep 3000))
-                          (def link (:link entry))
-                          (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
-                          (def datetime (:datetime (first (filter #(contains? % :datetime) maps))))
-                          (.toDate (formatter/parse (formatter/formatters :date-time-no-ms) datetime))) }
-  { :name "Japan Today",
-    :feed-url "http://www.japantoday.com/feed",
-    :get-published-date (fn [entry] (:published-date entry)) }
+    :get-additional (fn [entry]
+                      (time (Thread/sleep 3000))
+                      (def link (:link entry))
+                      (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
+                      (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
+                      (def dateStr (:datetime (first (filter #(contains? % :datetime) maps))))
+                      (def date (.toDate (formatter/parse (formatter/formatters :date-time-no-ms) dateStr)))
+                      { :datetime date, :image-url image-url }) }
   { :name "TechCrunch"
     :feed-url "http://feeds.feedburner.com/TechCrunch/"
-    :get-published-date (fn [entry] (:published-date entry)) }))
+    :get-additional (fn [entry]
+                      (time (Thread/sleep 3000))
+                      (def link (:link entry))
+                      (def proxy-content (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
+                      (def real-link (:href (first (filter #(contains? % :href) proxy-content))))
+                      (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse real-link))))
+                      (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
+                      (def date (:published-date entry))
+                      { :datetime date, :image-url image-url }) }))
 
 
 ; Firebase
@@ -61,9 +68,9 @@
   (def id (:id (:entry entry)))
   (some #(= id %) (keys saved-entries)))
 
-(defn append-datetime [{entry :entry, src :src}]
-  (def datetime ((:get-published-date src) entry))
-  (list :entry (merge entry { :datetime datetime }), :src src))
+(defn append-additional [{entry :entry, src :src}]
+  (def additional ((:get-additional src) entry))
+  (list :entry (merge entry additional), :src src))
 
 (defn to-firebase-content [{entry :entry, src :src}]
   {
@@ -73,6 +80,7 @@
        :link (:link entry)
        :title (:title entry)
        :datetime (:datetime entry)
+       :image-url (:image-url entry)
      }
    })
 
@@ -91,7 +99,7 @@
 (defn -main [& args]
   (def entries (flatten (map entries-from-src src)))
   (def new-entries (remove is-already-saved entries))
-  (def additional-new-entries (map append-datetime new-entries))
+  (def additional-new-entries (map append-additional new-entries))
   (doseq [data (map to-firebase-content additional-new-entries)]
     (insert-news-to-firebase data)
     (p (:title (first (vals data)))))
