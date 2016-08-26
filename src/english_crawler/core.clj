@@ -10,33 +10,8 @@
   (:gen-class))
 (def p pprint); for debug
 
-(def built-in-formatter )
 
-; Feed data
-(def src (list
-  { :name "The Japan Times",
-    :feed-url "http://www.japantimes.co.jp/feed/topstories/",
-    :get-additional (fn [entry]
-                      (time (Thread/sleep 3000))
-                      (def link (:link entry))
-                      (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
-                      (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
-                      (def dateStr (:datetime (first (filter #(contains? % :datetime) maps))))
-                      (def date (.toDate (formatter/parse (formatter/formatters :date-time-no-ms) dateStr)))
-                      { :datetime date, :image-url image-url }) }
-  { :name "TechCrunch"
-    :feed-url "http://feeds.feedburner.com/TechCrunch/"
-    :get-additional (fn [entry]
-                      (time (Thread/sleep 3000))
-                      (def link (:link entry))
-                      (def proxy-content (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
-                      (def real-link (:href (first (filter #(contains? % :href) proxy-content))))
-                      (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse real-link))))
-                      (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
-                      (def date (:published-date entry))
-                      { :datetime date, :image-url image-url }) }))
-
-
+;-----------------------------------
 ; Firebase
 (def firebase-token (System/getenv "FIREBASE_TOKEN"))
 (def firebase-db-name (System/getenv "FIREBASE_DB_NAME"))
@@ -49,12 +24,14 @@
   (taika/read firebase-db-name "/news/"))
 
 
+;-----------------------------------
 ; Slack
 (def slack-token (System/getenv "SLACK_TOKEN"))
 (def slack-room-name(System/getenv "SLACK_ROOM_NAME"))
 (def slack-connection {:api-url "https://slack.com/api" :token slack-token})
 
 
+;-----------------------------------
 ; Functions
 (defn append-id [entry]
   (def id (hash (:link entry)))
@@ -81,6 +58,7 @@
        :title (:title entry)
        :datetime (:datetime entry)
        :image-url (:image-url entry)
+       :text (:text entry)
      }
    })
 
@@ -95,6 +73,78 @@
   (slack/post-message slack-connection slack-room-name message))
 
 
+(defn find-text-div [content]
+  (let [[head & tail] content]
+    (when-not (nil? head)
+      (def is-targent
+        (and
+          (vector? head)
+          (def classValue (:class (second head)))
+          (not (nil? classValue))
+          (.contains classValue "article-entry text")))
+      (if is-targent
+        head
+        (do
+          (def result (if (vector? head) (find-text-div head)))
+          (if (nil? result)
+            (find-text-div tail)
+            result))))))
+
+
+(defn element-to-text-list [element]
+  (cond
+    (nil? element) nil
+    (string? element) element
+    (vector? element) (let [[key param first-child & children] element]
+                        (cond
+                          (= key :br) "\n"
+                          (= key :script) nil
+                          :else (do
+                                  (def sentence-list
+                                    (flatten
+                                      (list
+                                        (element-to-text-list first-child)
+                                        (map element-to-text-list children))))
+                                  (clojure.string/join "" (filter #(not (nil? %)) sentence-list)))))))
+
+(defn text-div-to-text [content]
+  (let [[_ _ & children] content]
+    (def text-list (filter #(not (empty? %)) (map element-to-text-list children)))
+    (clojure.string/join "\n\n" text-list)))
+
+
+;-----------------------------------
+; Feed data
+(def src (list
+  ;TODO Japan Times対応
+  ;{ :name "The Japan Times",
+  ;  :feed-url "http://www.japantimes.co.jp/feed/topstories/",
+  ;  :get-additional (fn [entry]
+  ;                    (time (Thread/sleep 3000))
+  ;                    (def link (:link entry))
+  ;                    (def content (parse link))
+  ;                    (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten content)))
+  ;                    (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
+  ;                    (def dateStr (:datetime (first (filter #(contains? % :datetime) maps))))
+  ;                    (def date (.toDate (formatter/parse (formatter/formatters :date-time-no-ms) dateStr)))
+  ;                    { :datetime date, :image-url image-url }) }
+  ;TODO あと一つぐらいソースサイトを増やす
+  { :name "TechCrunch"
+    :feed-url "http://feeds.feedburner.com/TechCrunch/"
+    :get-additional (fn [entry]
+                      (time (Thread/sleep 3000))
+                      (def link (:link entry))
+                      (def proxy-content (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
+                      (def real-link (:href (first (filter #(contains? % :href) proxy-content))))
+                      (def content (parse real-link))
+                      (def text (text-div-to-text (find-text-div content)))
+                      (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten content)))
+                      (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
+                      (def date (:published-date entry))
+                      { :datetime date, :image-url image-url, :text text, :link real-link }) }))
+
+
+;-----------------------------------
 ; Main
 (defn -main [& args]
   (def entries (flatten (map entries-from-src src)))
