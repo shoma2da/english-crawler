@@ -73,21 +73,16 @@
   (slack/post-message slack-connection slack-room-name message))
 
 
-(defn find-text-div [content]
+(defn find-text-div [content is-target-function]
   (let [[head & tail] content]
     (when-not (nil? head)
-      (def is-targent
-        (and
-          (vector? head)
-          (def classValue (:class (second head)))
-          (not (nil? classValue))
-          (.contains classValue "article-entry text")))
+      (def is-targent (is-target-function head))
       (if is-targent
         head
         (do
-          (def result (if (vector? head) (find-text-div head)))
+          (def result (if (vector? head) (find-text-div head is-target-function)))
           (if (nil? result)
-            (find-text-div tail)
+            (find-text-div tail is-target-function)
             result))))))
 
 
@@ -116,19 +111,17 @@
 ;-----------------------------------
 ; Feed data
 (def src (list
-  ;TODO Japan Times対応
-  ;{ :name "The Japan Times",
-  ;  :feed-url "http://www.japantimes.co.jp/feed/topstories/",
-  ;  :get-additional (fn [entry]
-  ;                    (time (Thread/sleep 3000))
-  ;                    (def link (:link entry))
-  ;                    (def content (parse link))
-  ;                    (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten content)))
-  ;                    (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
-  ;                    (def dateStr (:datetime (first (filter #(contains? % :datetime) maps))))
-  ;                    (def date (.toDate (formatter/parse (formatter/formatters :date-time-no-ms) dateStr)))
-  ;                    { :datetime date, :image-url image-url }) }
-  ;TODO あと一つぐらいソースサイトを増やす
+  { :name "Japan Today",
+    :feed-url "http://www.japantoday.com/feed",
+    :get-additional (fn [entry]
+                      (time (Thread/sleep 3000))
+                      (def link (:link entry))
+                      (def content (parse link))
+                      (def text (text-div-to-text (find-text-div content (fn [head] (and
+                                                              (vector? head)
+                                                              (= :div (first head)))))))
+                      (def date (:published-date entry))
+                      { :datetime date, :image-url nil, :text text }) }
   { :name "TechCrunch"
     :feed-url "http://feeds.feedburner.com/TechCrunch/"
     :get-additional (fn [entry]
@@ -137,7 +130,13 @@
                       (def proxy-content (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
                       (def real-link (:href (first (filter #(contains? % :href) proxy-content))))
                       (def content (parse real-link))
-                      (def text (text-div-to-text (find-text-div content)))
+                      (def text (text-div-to-text (find-text-div content (fn [head]
+                                                                           (and
+                                                                             (vector? head)
+                                                                             (def classValue (:class (second head)))
+                                                                             (not (nil? classValue))
+                                                                             (.contains classValue "article-entry text")))
+                                                                           )))
                       (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten content)))
                       (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
                       (def date (:published-date entry))
