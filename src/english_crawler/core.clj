@@ -23,12 +23,21 @@
 (def saved-entries
   (taika/read firebase-db-name "/news/"))
 
+(defn insert-news-to-firebase [data]
+  (taika/update! firebase-db-name "/news" data firebase-user-auth-token))
+
 
 ;-----------------------------------
 ; Slack
 (def slack-token (System/getenv "SLACK_TOKEN"))
 (def slack-room-name(System/getenv "SLACK_ROOM_NAME"))
 (def slack-connection {:api-url "https://slack.com/api" :token slack-token})
+
+(defn post-message-to-slack [new-data]
+  (def message
+    (if (not= 0 (count new-data))
+      (str "【クロール結果】" (count new-data) " 件の新着ニュースをFirebaseに保存しました")))
+  (if (not (nil? message)) (slack/post-message slack-connection slack-room-name message)))
 
 
 ;-----------------------------------
@@ -62,28 +71,17 @@
      }
    })
 
-(defn insert-news-to-firebase [data]
-  (taika/update! firebase-db-name "/news" data firebase-user-auth-token))
 
-(defn new-data-message [new-data]
-  (if (not= 0 (count new-data))
-    (str "【クロール結果】" (count new-data) " 件の新着ニュースをFirebaseに保存しました")))
-
-(defn post-message-to-slack [message]
-  (slack/post-message slack-connection slack-room-name message))
-
-
-(defn find-text-div [content is-target-function]
-  (let [[head & tail] content]
-    (when-not (nil? head)
-      (def is-targent (is-target-function head))
-      (if is-targent
-        head
-        (do
-          (def result (if (vector? head) (find-text-div head is-target-function)))
-          (if (nil? result)
-            (find-text-div tail is-target-function)
-            result))))))
+(defn find-text-div [[head & tail] is-target-function]
+  (when-not (nil? head)
+    (def is-target (is-target-function head))
+    (if is-target
+      head
+      (do
+        (def result (if (vector? head) (find-text-div head is-target-function)))
+        (if (nil? result)
+          (find-text-div tail is-target-function)
+          result)))))
 
 
 (defn element-to-text-list [element]
@@ -113,7 +111,7 @@
 (def src (list
   { :name "Japan Today",
     :feed-url "http://www.japantoday.com/feed",
-    :get-additional (fn [entry]
+    :get-additional (fn [entry] ;TODO Runtime Polymorphism をつかう
                       (time (Thread/sleep 3000))
                       (def link (:link entry))
                       (def content (parse link))
@@ -152,4 +150,4 @@
   (doseq [data (map to-firebase-content additional-new-entries)]
     (insert-news-to-firebase data)
     (p (:title (first (vals data)))))
-  (post-message-to-slack (new-data-message new-entries)))
+  (post-message-to-slack new-entries))
