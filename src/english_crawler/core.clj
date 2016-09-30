@@ -109,45 +109,58 @@
 ;-----------------------------------
 ; Feed data
 (def src (list
-  { :name "Japan Today",
-    :feed-url "http://www.japantoday.com/feed",
-    :get-additional (fn [entry] ;TODO Runtime Polymorphism をつかう
-                      (time (Thread/sleep 3000))
-                      (def link (:link entry))
-                      (def content (parse link))
-                      (def text (text-div-to-text (find-text-div content (fn [head] (and
-                                                              (vector? head)
-                                                              (= :div (first head)))))))
-                      (def date (:published-date entry))
-                      { :datetime date, :image-url nil, :text text }) }
-  { :name "TechCrunch"
-    :feed-url "http://feeds.feedburner.com/TechCrunch/"
-    :get-additional (fn [entry]
-                      (time (Thread/sleep 3000))
-                      (def link (:link entry))
-                      (def proxy-content (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
-                      (def real-link (:href (first (filter #(contains? % :href) proxy-content))))
-                      (def content (parse real-link))
-                      (def text (text-div-to-text (find-text-div content (fn [head]
-                                                                           (and
-                                                                             (vector? head)
-                                                                             (def classValue (:class (second head)))
-                                                                             (not (nil? classValue))
-                                                                             (.contains classValue "article-entry text")))
-                                                                           )))
-                      (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten content)))
-                      (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
-                      (def date (:published-date entry))
-                      { :datetime date, :image-url image-url, :text text, :link real-link }) }))
+   { :name "Japan Times",
+     :feed-url "http://www.japantimes.co.jp/feed/topstories/"
+     :get-additional (fn [entry] ;TODO Runtime Polymorphism をつかう
+                       ;(time (Thread/sleep 3000))
+                       (def link (:link entry))
+                       (def content (parse link))
+                       (def maps (filter map? (flatten content)))
+                       (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
+                       (def text (text-div-to-text (find-text-div content (fn [head] (and
+                                                           (vector? head)
+                                                           (= :div (first head))
+                                                           (= "jtarticle" (:id (second head))))))))
+
+                       ;TODO dateをパースする
+                       ;http://joda-time.sourceforge.net/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime()
+                       ;(def custom-formatter (formatter "yyyy-MM-dd'T'HH:mm:ssZ"))
+                       ;"2016-09-26T15:48:29+09:00"
+                       ;(def date-str (:content (first (filter (fn [content] (= (:property content) "DC.date.issued")) maps))))
+                       ;(def date (formatter/parse custom-formatter date-str))
+                       { :datetime date, :image-url image-url, :text text }) }
+           ))
+  ;{ :name "TechCrunch"
+  ;  :feed-url "http://feeds.feedburner.com/TechCrunch/"
+  ;  :get-additional (fn [entry]
+  ;                    (time (Thread/sleep 3000))
+  ;                    (def link (:link entry))
+  ;                    (def proxy-content (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten (parse link))))
+  ;                    (def real-link (:href (first (filter #(contains? % :href) proxy-content))))
+  ;                    (def content (parse real-link))
+  ;                    (def text (text-div-to-text (find-text-div content (fn [head]
+  ;                                                                         (and
+  ;                                                                           (vector? head)
+  ;                                                                           (def classValue (:class (second head)))
+  ;                                                                           (not (nil? classValue))
+  ;                                                                           (.contains classValue "article-entry text")))
+  ;                                                                         )))
+  ;                    (def maps (filter #(instance? clojure.lang.PersistentArrayMap %) (flatten content)))
+  ;                    (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
+  ;                    (def date (:published-date entry))
+  ;                    { :datetime date, :image-url image-url, :text text, :link real-link }) }))
 
 
 ;-----------------------------------
 ; Main
 (defn -main [& args]
   (def entries (flatten (map entries-from-src src)))
-  (def new-entries (remove is-already-saved entries))
+  ;(def new-entries (remove is-already-saved entries))
+  (def new-entries (take 1 entries))
   (def additional-new-entries (map append-additional new-entries))
   (doseq [data (map to-firebase-content additional-new-entries)]
-    (insert-news-to-firebase data)
+    ;(insert-news-to-firebase data)
+    (p data)
     (p (:title (first (vals data)))))
-  (post-message-to-slack new-entries))
+  ;(post-message-to-slack new-entries)
+  )
