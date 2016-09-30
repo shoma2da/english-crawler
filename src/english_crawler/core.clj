@@ -109,17 +109,23 @@
 ;-----------------------------------
 ; Feed data
 (def src (list
-  { :name "Japan Today",
-    :feed-url "http://www.japantoday.com/feed",
-    :get-additional (fn [entry] ;TODO Runtime Polymorphism をつかう
-                      (time (Thread/sleep 3000))
-                      (def link (:link entry))
-                      (def content (parse link))
-                      (def text (text-div-to-text (find-text-div content (fn [head] (and
-                                                              (vector? head)
-                                                              (= :div (first head)))))))
-                      (def date (:published-date entry))
-                      { :datetime date, :image-url nil, :text text }) }
+   { :name "Japan Times",
+     :feed-url "http://www.japantimes.co.jp/feed/topstories/"
+     :get-additional (fn [entry] ;TODO Runtime Polymorphism をつかう
+                       (time (Thread/sleep 3000))
+                       (def link (:link entry))
+                       (def content (parse link))
+                       (def maps (filter map? (flatten content)))
+                       (def image-url (:content (first (filter #(= (:property %) "og:image") maps))))
+                       (def text (text-div-to-text (find-text-div content (fn [head] (and
+                                                           (vector? head)
+                                                           (= :div (first head))
+                                                           (= "jtarticle" (:id (second head))))))))
+
+                       (def custom-formatter (formatter/formatters :date-time-no-ms))
+                       (def date-str (:content (first (filter #(= (:property %) "DC.date.issued") maps))))
+                       (def date (.toDate (formatter/parse custom-formatter date-str)))
+                       { :datetime date, :image-url image-url, :text text }) }
   { :name "TechCrunch"
     :feed-url "http://feeds.feedburner.com/TechCrunch/"
     :get-additional (fn [entry]
